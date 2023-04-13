@@ -3,14 +3,14 @@ Subjects divided three ways: A, B, C
 Subjects also divided two ways: X, Y
 Two methodologies: Z, H
 
-Group A: Z 1, H 2
-Group B: Z 2, H 3
-Group C: Z 3, H 1
+Group A: H 1, Z 2
+Group B: H 2, Z 3
+Group C: H 3, Z 1
 
-Group X: Z first, H second
-Group Y: Z second, H first
+Group X: H first, Z second
+Group Y: H second, Z first
 
 Subject code: [ABC][XY][Number]
 	Number is assigned sequentially
-Example: AX1 is first subject doing Z1, H2, in that order
-		 CY3 is third subject doing Z3, H1, opposite order
+Example: AX1 is first subject doing H1, Z2, in that order
+		 CY3 is third subject doing H3, Z1, opposite order
