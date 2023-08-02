@@ -7,6 +7,13 @@ from tqdm import tqdm, trange
 
 from violin import violin
 
+ALL = ('PAE', 'PBE', 'PA1', 'PB1', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1')
+OMIT = {'PBE', # Creator of Hantatallas, too high accuracy
+		'PA2', # Accuracy of 0.5 on Hantatallas
+		'AY1', # Accuracy of 0.4 on H and 0.3 on Z
+		'BX1', # Accuracy of 0.4 on Z
+		}
+
 def get_data(subjects):
 	frames = [pd.read_csv(f'tagged/{s}.csv') for s in subjects]
 	return pd.concat(frames)
@@ -21,7 +28,7 @@ def variation(data, seed=None): # Currently, uniform distribution
 	return np.random.rand(len(data)) * STRIP_SIZE - STRIP_SIZE/2
 
 def preprocess_data(data):
-	return data[data['List'].str.startswith('P') & (data['Duration'] > 10) & (data['Duration']<600)] # Remove practice ones and extreme outliers
+	return data[(data['List'].str.startswith('P') | data['List'].str.startswith('E')) & (data['Duration'] > 10) & (data['Duration']<600)] # Remove practice ones and extreme outliers
 
 def add_t_statistic(data):
 	mu, sigma = {}, {}
@@ -399,9 +406,8 @@ def acc_time(which, system, tstat=False):
 def acc_time_all(tstat=True):
 	print('T-stat' if tstat else 'Duration')
 	print(r'\textbf{Subject} & $a_H$ & $\mu_H$ & $\sigma_H$ & $a_Z$ & $\mu_Z$ & $\sigma_Z$ & $\mu_Z-\mu_H$ \\ \midrule')
-	incl = {'PAE', 'PA1', 'PB1', 'PB2'}
-	all = ('PAE', 'PBE', 'PA1', 'PB1', 'PA2', 'PB2')
-	for which in all:
+	incl = set(ALL) - OMIT
+	for which in ALL:
 		h = acc_time({which}, 'H', tstat)
 		z = acc_time({which}, 'Z', tstat)
 		d = z[1] - h[1]
@@ -478,7 +484,7 @@ def bootstrap_all():
 	plt.show()
 
 def likert():
-	data = get_surveys({'PAE','PA1','PB1','PB2'})
+	data = get_surveys({'PAE','PA1','PB1','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})
 	columns = list(reversed(['H Difficult to use', 'Z Difficult to use', 'H Tiring to use', 'Z Tiring to use', 'H Certain of answers', 'Z Certain of answers']))
 #	colors = ['red', 'orange', 'yellow', 'green', 'cyan']
 #	colors = [plt.cm.coolwarm(i) for i in (0.9, 0.8, 0.5, 0.2, 0.1)]
@@ -503,7 +509,7 @@ def likert():
 	plt.show()
 
 if __name__ == '__main__':
-	likert()
+	acc_time_all()
 	
 #	print(add_t_statistic(preprocess_data(get_data({'PBE','PA1','PA2','PB2'}))))
 

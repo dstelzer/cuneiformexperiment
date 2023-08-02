@@ -115,5 +115,5 @@ def process_surveys(inf, outf, filter=None):
 			writer.writerow(row)
 
 if __name__ == '__main__':
-	process_results('experiment.13.log', 'CY1.csv', ['CY1'])
-#	process_surveys('experiment.10.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2'})
+#	process_results('experiment.13.log', 'CY1.csv', ['CY1'])
+	process_surveys('experiment.13.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})
