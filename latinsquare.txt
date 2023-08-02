@@ -8,7 +8,7 @@ Group B: H 2, Z 3
 Group C: H 3, Z 1
 
 Group X: H first, Z second
-Group Y: H second, Z first
+Group Y: Z first, H second
 
 Subject code: [ABC][XY][Number]
 	Number is assigned sequentially
