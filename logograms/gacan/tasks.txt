@@ -1,0 +1,29 @@
+KBo 8	4	G	Requested	DONE
+KBo 10	1	T	Requested	DONE
+KBo 11	1	B
+KBo 14	1	B
+KBo 24	1	TF				NOT THERE :(
+KBo 47	4	G	Requested	DONE
+KBo 52	1	F
+KBo 53	1	G
+KBo 57	3	F
+KBo 59	1	G
+KBo 60	1	BF
+
+KUB 2	1	F
+KUB 20	1	B
+KUB 27	19	GBF	Requested	DONE
+KUB 30	1	G
+KUB 36	1	G				DONE
+KUB 44	2	G
+KUB 55	1	G
+
+Bo 3727	1	B
+Bo 4183	1	G
+Bo 6392	1	G
+Bo 6679	1	G
+
+DAAM 1.1	2	G
+FHL 156	1	G
+
+UIUC has KUB 36 37 38 39 40 41 43 49 50
