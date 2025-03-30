@@ -2,6 +2,7 @@ import csv
 from datetime import datetime
 import json
 from collections import defaultdict
+from pathlib import Path
 
 from tqdm import tqdm
 
@@ -26,10 +27,12 @@ def process_results(inf, outf, chosen=None):
 				key = makekey(subject, payload)
 				starts[key] = stamp
 				data[key] = payload
+	#			if subject in chosen: print('Start', key)
 			elif action == 'RESPONSE':
 				key = makekey(subject, payload)
 				ends[key] = stamp
 				data[key].update(payload)
+	#			if subject in chosen: print('End', key)
 	
 	with open(outf, 'w', newline='') as f:
 		writer = csv.writer(f)
@@ -64,6 +67,7 @@ def process_surveys(inf, outf, filter=None):
 		'logo':'Familiarity with logograms',
 		'hzl':'Familiarity with the Zeichenlexikon',
 		'hantatallas':'Familiarity with Hantatallas',
+		'sanhatallas':'Familiarity with Sanhatallas',
 		'german':'Can read German',
 		'other':'Other information',
 	}
@@ -89,11 +93,9 @@ def process_surveys(inf, outf, filter=None):
 			if action == 'SURVEY':
 				if payload['which'] == 'initial':
 					key = 'I'
-				elif payload['which'] == 'final' and payload['system'] == 'H':
-					key = 'H'
-				elif payload['which'] == 'final' and payload['system'] == 'Z':
-					key = 'Z'
-				else: # We could just say if not initial, then key = system, but this allows us to be more thorough in detecting mistakes
+				elif payload['which'] == 'final':
+					key = payload['system'] # H, Z, S
+				else:
 					raise ValueError(subject, payload)
 				
 				data[subject][key] = payload
@@ -104,16 +106,66 @@ def process_surveys(inf, outf, filter=None):
 		row = ['Subject']
 		row.extend(qs_init[k] for k in qs_init) # Not using .values for symmetry
 		row.extend('H '+qs_final[k] for k in qs_final)
+		row.extend('S '+qs_final[k] for k in qs_final)
 		row.extend('Z '+qs_final[k] for k in qs_final)
 		writer.writerow(row)
 		
 		for subject, vals in data.items():
 			row = [subject]
-			row.extend(vals['I'][k] for k in qs_init)
-			row.extend(vals['H'][k] for k in qs_final)
-			row.extend(vals['Z'][k] for k in qs_final)
+			row.extend(vals['I'][k] if k in vals['I'] else '' for k in qs_init) # Since early surveys didn't have the sanhatallas question
+			row.extend((vals['H'][k] if 'H' in vals else '') for k in qs_final)
+			row.extend((vals['S'][k] if 'S' in vals else '') for k in qs_final)
+			row.extend((vals['Z'][k] if 'Z' in vals else '') for k in qs_final)
 			writer.writerow(row)
 
+def rewrite_for_r():
+	data = []
+	currently = {}
+	semesters = {}
+	
+	yesno = {'yes' : 1, 'no' : 0}
+	
+	# First, we read the within-subjects data from surveys.csv
+	with Path('surveys.csv').open('r', newline='') as f:
+		read = csv.DictReader(f)
+		for line in read:
+			subj = line['Subject']
+			curr = yesno[line['Currently enrolled in Hittite'].lower()] # This will throw an exception on a bad value, which is exactly what we want
+			sems = int(line['Semesters taken (including current)']) # Similarly
+			if subj in currently: raise ValueError('Subject already exists!', subj)
+			
+			currently[subj] = curr
+			semesters[subj] = sems
+	
+	# Then, we read each subject's task results from tagged/*.csv
+	for fn in tqdm(list(Path('tagged').glob('*.csv'))):
+		with fn.open('r', newline='') as f:
+			read = csv.DictReader(f)
+			for line in tqdm(list(read)):
+				if line['List'].startswith('S'): continue # Skip practice data
+				data.append({
+					'subject'	: line['Subject'],
+					'time'		: float(line['Duration']),
+					'system'	: line['System'],
+					'task'		: line['Name'],
+					'accurate'	: int(line['Accuracy']),
+					'difficulty': int(line['Name'][0]),
+					'enrolled'	: currently[line['Subject']],
+					'semesters'	: semesters[line['Subject']],
+				})
+	
+	# And output our finished datatable
+	with Path('data_for_r.csv').open('w', newline='') as f:
+		write = csv.DictWriter(f, ['subject', 'time', 'system', 'task', 'accurate', 'difficulty', 'enrolled', 'semesters'])
+		write.writeheader()
+		write.writerows(data)
+
+# Subjects removed for inaccuracy: TODO
+# Subjects removed for other reasons: TODO
 if __name__ == '__main__':
-#	process_results('experiment.13.log', 'CY1.csv', ['CY1'])
-	process_surveys('experiment.13.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})
+	process_surveys('experiment.19.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1','AX2','AY1','AY2','BX1','BX2','BY1','BY2','CX1','CX2','CY1','CY2'})
+	rewrite_for_r()
+#	for subj in tqdm(['CX1'], disable=True):
+#		print(subj)
+#		process_results('experiment.19.log', f'{subj}.csv', [subj])
+#	process_surveys('experiment.13.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})

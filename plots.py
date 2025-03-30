@@ -7,7 +7,7 @@ from tqdm import tqdm, trange
 
 from violin import violin
 
-ALL = ('PAE', 'PBE', 'PA1', 'PB1', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1')
+ALL = {'PAE', 'PBE', 'PA1', 'PB1', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'}
 OMIT = {'PBE', # Creator of Hantatallas, too high accuracy
 		'PA2', # Accuracy of 0.5 on Hantatallas
 		'AY1', # Accuracy of 0.4 on H and 0.3 on Z
@@ -18,8 +18,9 @@ def get_data(subjects):
 	frames = [pd.read_csv(f'tagged/{s}.csv') for s in subjects]
 	return pd.concat(frames)
 
-def get_surveys(subjects):
-	data = pd.read_csv('surveys.csv')
+def get_surveys(subjects=None):
+	data = pd.read_csv('surveys.csv', na_values=[''])
+	if not subjects: return data
 	return data[data['Subject'].isin(subjects)]
 
 def variation(data, seed=None): # Currently, uniform distribution
@@ -41,6 +42,18 @@ def add_t_statistic(data):
 		(row['Duration'] - mu[row['Subject']]) / sigma[row['Subject']]
 	), axis='columns') # Add new column
 	return data
+
+def calculate_mean_difference(data):
+	diffs = {}
+	subjects = data['Subject'].unique()
+	
+	def get(subj, syst):
+		return data[(data['Subject']==subj) & (data['Accuracy']==1) & (data['System']==syst)]['Duration']
+	
+	for s in subjects:
+		diffs[s] = np.mean(get(s, 'H')) - np.mean(get(s, 'Z'))
+	
+	return diffs
 
 def draw_mu_sigma(data, ax=None, stderr=False):
 	if ax is None: ax = plt.gca()
@@ -112,6 +125,19 @@ def plot_system_comparison_tstat():
 #	plt.xlim(left=0)
 	
 	plt.savefig('comparison_tstat.pdf', bbox_inches='tight')
+	plt.show()
+
+def compare_means():
+	data = preprocess_data(get_data(ALL-{'PBE'}))
+	diffs = np.array(list(calculate_mean_difference(data).values()))
+	print(diffs)
+	print('Mean:', np.mean(diffs))
+	
+	plt.scatter(x=diffs, y=0*variation(diffs, 1), c=diffs)
+	plt.xlabel('Difference in average duration (seconds)')
+	plt.yticks(())
+	plt.grid(True, axis='x')
+	plt.savefig('deltas.pdf', bbox_inches='tight')
 	plt.show()
 
 def compare_difficulty():
@@ -484,19 +510,24 @@ def bootstrap_all():
 	plt.show()
 
 def likert():
-	data = get_surveys({'PAE','PA1','PB1','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})
-	columns = list(reversed(['H Difficult to use', 'Z Difficult to use', 'H Tiring to use', 'Z Tiring to use', 'H Certain of answers', 'Z Certain of answers']))
+	data = get_surveys()#{'PAE','PA1','PB1','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})
+	columns = list(reversed(['H Difficult to use', 'S Difficult to use', 'Z Difficult to use', 'H Tiring to use', 'S Tiring to use', 'Z Tiring to use', 'H Certain of answers', 'S Certain of answers', 'Z Certain of answers']))
 #	colors = ['red', 'orange', 'yellow', 'green', 'cyan']
 #	colors = [plt.cm.coolwarm(i) for i in (0.9, 0.8, 0.5, 0.2, 0.1)]
 #	colors[2] = '#aaaaaa'
 	colors = ['#FF8000', '#FFBF80', '#E0E0E0', '#80BFFF', '#0080FF']
 	
-	def howmany(col, val):
-		return len(data[data[col]==val])
+	for col in columns:
+		data[col] = data[col].astype('Int64') # Allow NaNs
+		data[col][data[col] > 5] = 5 # Handle the people who put 6
+		data[col][data[col] < 1] = 1 # Or 0
+	
+	def howmany(col, val): # Return as a proportion to deal with different numbers of subjects on each system
+		return len(data[data[col]==val]) / data.count()[col]
 	
 	left = np.zeros(len(columns))
-	ys = list(range(len(columns), 0, -1)) # n..0
-	ys = list(reversed(['Hantatallas\nDifficult', 'Zeichenlexikon\nDifficult', 'Hantatallas\nTiring', 'Zeichenlexikon\nTiring', 'Hantatallas\nCertain', 'Zeichenlexikon\nCertain']))
+#	ys = list(range(len(columns), 0, -1)) # n..0
+	ys = list(reversed(['Codes\nDifficult', 'Drawing\nDifficult', 'Dictionary\nDifficult', 'Codes\nTiring', 'Drawing\nTiring', 'Dictionary\nTiring', 'Codes\nCertain', 'Drawing\nCertain', 'Dictionary\nCertain']))
 	for i in range(5):
 		vals = [howmany(col, i+1) for col in columns]
 		plt.barh(ys, width=vals, left=left, color=colors[i])
@@ -504,12 +535,12 @@ def likert():
 	
 	plt.legend(['Not at all', 'A bit', 'Somewhat', 'Very', 'Extremely'], ncol=5, bbox_to_anchor=(1.015,1.1))
 	plt.subplots_adjust(left=0.25, right=0.95)
-	plt.xticks((0,1,2,3,4))
+	plt.xticks(np.linspace(0, 1, 11))
 	plt.savefig('likert.pdf')
 	plt.show()
 
 if __name__ == '__main__':
-	acc_time_all()
+	likert()
 	
 #	print(add_t_statistic(preprocess_data(get_data({'PBE','PA1','PA2','PB2'}))))
 
