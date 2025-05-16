@@ -15,7 +15,8 @@ Import some libraries:
 library(tidyverse)
 library(knitr)
 library(kableExtra)
-library(ez)
+library(lme4)
+library(lmerTest)
 ```
 
 Define some functions:
@@ -121,11 +122,11 @@ set.seed(1)
 ggplot(data=raw_accs) +
     aes(x=accuracy, y=system, color=system, shape=system) +
     geom_jitter(width=0.01, height=0.25) +
-    labs(title='Raw accuracy, including outlier subjects')
+    labs(title='Raw accuracy, including outlier subjects', x='Accuracy', y='System', shape=NULL, color=NULL)
 ```
 
 ```{r}
-ggsave('r_raw_accuracy.pdf')
+ggsave('r_raw_accuracy.pdf', width=6, height=4, units="in")
 ```
 
 For everything else, we're going to use the `filtered` dataset that excludes the outlier subjects. Including "enrolled" and "semesters" in the grouping, since they don't vary by subject or system, ensures that they end up in the summary afterward.
@@ -140,7 +141,6 @@ Now we have our subject variable, one within-subjects variable (system), two bet
 ```{r}
 accs_h <- accuracy %>% filter(subject %in% subjs_used_h)
 accs_s <- accuracy %>% filter(subject %in% subjs_used_s)
-# ezDesign(accs_h, x=.(subject), y=.(system))
 ```
 
 ```{r}
@@ -168,16 +168,217 @@ ggplot() +
     geom_abline(slope=1, intercept=0) +
     xlim(0.5, 1.0) +
     ylim(0.5, 1.0) +
-    labs(shape='System', color='System', title='Accuracy by subject and system')
+    labs(shape='System', color='System', x='Zeichenlexikon', y='Other system', title='Accuracy by subject and system')
 ```
 
 ```{r}
-ggsave('r_accuracy_compare.pdf')
+ggsave('r_accuracy_compare.pdf', width=6, height=4, units="in")
+```
+
+Since we only have one accuracy measure per treatment per student, we can use a repeated-measures t-test. We should probably check the assumptions first, though:
+
+```{r}
+accs_h_wide = pivot_wider(accs_h, names_from=system, values_from=accuracy) %>% mutate(diff=H-Z)
+accs_s_wide = pivot_wider(accs_s, names_from=system, values_from=accuracy) %>% mutate(diff=S-Z)
+head(accs_h_wide)
+```
+
+My favorite way to do this is with a Q-Q plot, because it means we can look at nice plots and eyeball it instead of just staring at a column of numbers.
+
+```{r}
+library(qqplotr)
+ggplot(data=accs_h_wide, mapping=aes(sample=diff)) +
+  stat_qq_band(alpha = 0.5, conf = 0.95, bandType = "pointwise", fill = "blue") +
+  stat_qq_line(identity = TRUE) +
+  stat_qq_point(col = "black") +
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Hantatallas") + 
+  theme_bw()
+ggplot(data=accs_s_wide, mapping=aes(sample=diff)) +
+  stat_qq_band(alpha = 0.5, conf = 0.95, bandType = "pointwise", fill = "green") +
+  stat_qq_line(identity = TRUE) +
+  stat_qq_point(col = "black") +
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Sanhatallas") + 
+  theme_bw()
+```
+
+But we can also do a Shapiro-Wilk test for numerical confidence.
+
+```{r}
+shapiro.test(accs_h_wide$diff)
+```
+```{r}
+shapiro.test(accs_s_wide$diff)
+```
+
+The takeaway here, I think, is that we need more data on Sanhatallas. Six data points is just too few. But we should have more of those soon!
+
+Now, do the test!
+
+```{r}
+t.test(x=accs_h_wide$H, y=accs_h_wide$Z, paired=TRUE)
 ```
 
 ```{r}
-time_anova <- ezANOVA(accs_h, dv=accuracy, wid=subject, within=system, between=.(enrolled,semesters), observed=.(enrolled,semesters), return_aov=TRUE)
-time_anova
+t.test(x=accs_s_wide$S, y=accs_s_wide$Z, paired=TRUE)
+```
+
+We could also try a Wilcox test here (replace t.test with wilcox.test) if our assumptions of normality were violated.
+
+```{r}
+wilcox.test(x=accs_s_wide$S, y=accs_s_wide$Z, paired=TRUE)
+```
+
+To get more details, we can use a generalized linear mixed model (GLMM). This basically does the same thing as the above, but uses _all_ the data points instead of just the average of them.
+
+```{r}
+glmm <- glmer(accurate ~ relevel(system, ref="Z") + (1|subject) + (1|task), data=filtered, family=binomial(link="logit"))
+summary(glmm)
 ```
 
 ## Analyze time
+
+For time, we have several different data points per system per subject, and we don't want to entirely collapse those down into a single mean. So instead of a simple t-test (or ANOVA), we do a mixed-effects linear model. (And we use lmerTest to get a p-value, even though the author of lme4 dislikes that, just because publishers are going to want one. Alas.)
+
+The dataset we're using here is the `filtered` one, with outliers removed.
+
+```{r}
+str(filtered)
+```
+
+But it still includes inaccurate answers. We'd like to run our mixed-effects model both with inaccurate answers included, and with them excluded.
+
+```{r}
+only_accurate <- filtered %>% filter(accurate==1)
+str(only_accurate)
+```
+
+First, run with inaccurate ones included...
+
+```{r}
+mixed <- lmer(time ~ relevel(system, ref="Z") + (1|subject) + (1|task), data=filtered)
+summary(mixed)
+```
+
+...then excluded.
+
+```{r}
+mixed <- lmer(time ~ relevel(system, ref="Z") + (1|subject) + (1|task), data=only_accurate)
+summary(mixed)
+```
+
+We see less significance here because we threw out a bunch of data, so the standard error increased. But the overall results are not substantially different.
+
+Let's make a visualization to sanity-check these results, showing the difference in mean time by system by student.
+
+```{r}
+mean_times <- filtered %>% group_by(subject, system) %>% summarize(mean=mean(time), accuracy=mean(accurate))
+head(mean_times)
+```
+
+```{r}
+mean_diff_h = mean_times %>% filter(subject %in% subjs_used_h) %>% pivot_wider(names_from=system, values_from=c(mean, accuracy)) %>% mutate(diff = mean_Z - mean_H)
+mean_diff_s = mean_times %>% filter(subject %in% subjs_used_s) %>% pivot_wider(names_from=system, values_from=c(mean, accuracy)) %>% mutate(diff = mean_Z - mean_S)
+show(mean_diff_h)
+show(mean_diff_s)
+```
+
+```{r}
+set.seed(1)
+ggplot() +
+    geom_jitter(data=mean_diff_h,
+               mapping=aes(x=diff, y='Hantatallas', shape='Hantatallas', color='Hantatallas'),
+               width=0, height=0.2) +
+    geom_jitter(data=mean_diff_s,
+               mapping=aes(x=diff, y='Sanhatallas', shape='Sanhatallas', color='Sanhatallas'),
+               width=0, height=0.2) +
+    labs(x="Time", y="System", title="Difference of mean times", shape=NULL, color=NULL)
+```
+
+```{r}
+ggsave("r_mean_time_diff.pdf", width=6, height=4, units="in")
+```
+
+```{r}
+set.seed(1)
+
+ggplot() +
+    geom_point(data=mean_diff_h,
+               mapping=aes(x=mean_Z, y=mean_H, shape='Hantatallas', color='Hantatallas')) +
+    geom_point(data=mean_diff_s,
+               mapping=aes(x=mean_Z, y=mean_S, shape='Sanhatallas', color='Sanhatallas')) +
+    geom_abline(slope=1, intercept=0) +
+    xlim(60, 215) +
+    ylim(60, 215) +
+    labs(x="Zeichenlexikon", y="Other system", title="Mean time per task", shape=NULL, color=NULL)
+```
+
+```{r}
+ggsave("r_mean_times.pdf", width=6, height=4, units="in")
+```
+
+```{r}
+ratios_h <- mean_diff_h %>% mutate(time_ratio = mean_H / mean_Z, acc_ratio = accuracy_H / accuracy_Z)
+show(ratios_h)
+```
+```{r}
+ratios_s <- mean_diff_s %>% mutate(time_ratio = mean_S / mean_Z, acc_ratio = accuracy_S / accuracy_Z)
+show(ratios_s)
+```
+
+```{r}
+set.seed(1)
+
+ggplot() +
+    geom_point(data=ratios_h,
+               mapping=aes(x=time_ratio, y=acc_ratio, shape='Hantatallas', color='Hantatallas')) +
+    geom_point(data=ratios_s,
+               mapping=aes(x=time_ratio, y=acc_ratio, shape='Sanhatallas', color='Sanhatallas')) +
+    labs(x="Time ratio", y="Accuracy ratio")
+```
+
+This plot is mostly useful to give us a sense of who the outliers are. The blue triangle at the bottom left is someone who spent basically no time using Sanhatallas, and had a correspondingly low accuracy; the red dots at the top right spent a lot of time using Hantatallas, but got a very high accuracy for their efforts.
+
+Based on this, let's define a new metric...
+
+## Efficiency
+
+```{r}
+eff_h <- mean_diff_h %>% mutate(efficiency_H = accuracy_H / mean_H,
+                                efficiency_Z = accuracy_Z / mean_Z) %>%
+                        mutate(eff_diff = efficiency_H - efficiency_Z)
+show(eff_h)
+eff_s <- mean_diff_s %>% mutate(efficiency_S = accuracy_S / mean_S,
+                                efficiency_Z = accuracy_Z / mean_Z) %>%
+                        mutate(eff_diff = efficiency_S - efficiency_Z)
+show(eff_s)
+```
+
+"Efficiency" is defined as mean accuracy over mean time, to compensate for the outliers in the above plot. Let's see how it stacks up!
+
+```{r}
+set.seed(1)
+
+ggplot() +
+    geom_point(data=eff_h,
+               mapping=aes(x=efficiency_Z, y=efficiency_H, shape='Hantatallas', color='Hantatallas')) +
+    geom_point(data=eff_s,
+               mapping=aes(x=efficiency_Z, y=efficiency_S, shape='Sanhatallas', color='Sanhatallas')) +
+    geom_abline(slope=1, intercept=0) +
+    labs(x="Zeichenlexikon", y="Other system", title="Efficiency (mean accuracy / mean time)", shape=NULL, color=NULL) +
+    xlim(0.003, 0.014) +
+    ylim(0.003, 0.014)
+```
+
+```{r}
+ggsave("r_efficiency.pdf", width=6, height=4, units="in")
+```
+
+This efficiency seems to differ more between systems than accuracy does. Let's try a t-test on it.
+
+```{r}
+shapiro.test(eff_s$eff_diff)
+t.test(x=eff_s$efficiency_S, y=eff_s$efficiency_Z, paired=TRUE)
+wilcox.test(x=eff_s$efficiency_S, y=eff_s$efficiency_Z, paired=TRUE)
+```
+
+This suggests that the efficiency measure eliminates the outliers who caused a problem before, but we still need more data for a t-test to be properly meaningful.

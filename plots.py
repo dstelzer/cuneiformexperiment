@@ -509,7 +509,7 @@ def bootstrap_all():
 	plt.savefig('bootstrap.pdf', bbox_inches='tight')
 	plt.show()
 
-def likert():
+def likert(start=0, end=None, title=None, reverse=False):
 	data = get_surveys()#{'PAE','PA1','PB1','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})
 	columns = list(reversed(['H Difficult to use', 'S Difficult to use', 'Z Difficult to use', 'H Tiring to use', 'S Tiring to use', 'Z Tiring to use', 'H Certain of answers', 'S Certain of answers', 'Z Certain of answers']))
 #	colors = ['red', 'orange', 'yellow', 'green', 'cyan']
@@ -521,26 +521,38 @@ def likert():
 		data[col] = data[col].astype('Int64') # Allow NaNs
 		data[col][data[col] > 5] = 5 # Handle the people who put 6
 		data[col][data[col] < 1] = 1 # Or 0
+		if reverse:
+			data[col] = 6 - data[col]
 	
 	def howmany(col, val): # Return as a proportion to deal with different numbers of subjects on each system
 		return len(data[data[col]==val]) / data.count()[col]
 	
-	left = np.zeros(len(columns))
+	left = np.zeros(len(columns[start:end]))
 #	ys = list(range(len(columns), 0, -1)) # n..0
-	ys = list(reversed(['Codes\nDifficult', 'Drawing\nDifficult', 'Dictionary\nDifficult', 'Codes\nTiring', 'Drawing\nTiring', 'Dictionary\nTiring', 'Codes\nCertain', 'Drawing\nCertain', 'Dictionary\nCertain']))
+	if end and end-start > 3:
+		ys = list(reversed(['Codes\nDifficult', 'Drawing\nDifficult', 'Dictionary\nDifficult', 'Codes\nTiring', 'Drawing\nTiring', 'Dictionary\nTiring', 'Codes\nCertain', 'Drawing\nCertain', 'Dictionary\nCertain']))[start:end]
+	else:
+		ys = list(reversed(['Hantatallas', 'Sanhatallas', 'Zeichenlexikon']))
 	for i in range(5):
-		vals = [howmany(col, i+1) for col in columns]
+		vals = [howmany(col, i+1) for col in columns[start:end]]
 		plt.barh(ys, width=vals, left=left, color=colors[i])
 		left += vals
 	
-	plt.legend(['Not at all', 'A bit', 'Somewhat', 'Very', 'Extremely'], ncol=5, bbox_to_anchor=(1.015,1.1))
+	if title: plt.title(title, y=1.0, pad=30, x=-0.30, loc='left', fontsize=16)
+	leg = ['Not at all', 'A bit', 'Somewhat', 'Very', 'Extremely']
+	if reverse: leg = list(reversed(leg))
+	plt.legend(leg, ncol=5, bbox_to_anchor=(1.015,1.1))
 	plt.subplots_adjust(left=0.25, right=0.95)
+	if title: plt.subplots_adjust(top=0.85)
 	plt.xticks(np.linspace(0, 1, 11))
-	plt.savefig('likert.pdf')
+	plt.savefig(f'likert_{start}{end}.pdf')
 	plt.show()
 
 if __name__ == '__main__':
-	likert()
+	likert(0,3, 'How certain are you of your answers?', reverse=True)
+	likert(3,6, 'How tiring was the experience?')
+	likert(6,9, 'How difficult was the task?')
+	likert(0,9)
 	
 #	print(add_t_statistic(preprocess_data(get_data({'PBE','PA1','PA2','PB2'}))))
 
