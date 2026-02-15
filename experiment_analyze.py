@@ -131,7 +131,7 @@ def rewrite_for_r():
 		for line in read:
 			subj = line['Subject']
 			curr = yesno[line['Currently enrolled in Hittite'].lower()] # This will throw an exception on a bad value, which is exactly what we want
-			sems = int(line['Semesters taken (including current)']) # Similarly
+			sems = float(line['Semesters taken (including current)']) # Similarly
 			if subj in currently: raise ValueError('Subject already exists!', subj)
 			
 			currently[subj] = curr
@@ -160,12 +160,13 @@ def rewrite_for_r():
 		write.writeheader()
 		write.writerows(data)
 
-# Subjects removed for inaccuracy: TODO
-# Subjects removed for other reasons: TODO
+# Subjects removed for inaccuracy: TODO - handled in R
+# Subjects removed for other reasons: TODO - handled in R
+# Subjects removed for IRB reasons: AY3, CY3, BX3
 if __name__ == '__main__':
-	process_surveys('experiment.19.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1','AX2','AY1','AY2','BX1','BX2','BY1','BY2','CX1','CX2','CY1','CY2'})
-	rewrite_for_r()
-#	for subj in tqdm(['CX1'], disable=True):
-#		print(subj)
-#		process_results('experiment.19.log', f'{subj}.csv', [subj])
+#	process_surveys('experiment.21.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1','AX2','AX3','AY1','AY2','BX1','BX2','BY1','BY2','BY3','CX1','CX2','CX3','CY1','CY2'})
+#	rewrite_for_r()
+	for subj in tqdm(['AX3', 'BY3', 'CX3'], disable=True):
+		print(subj)
+		process_results('experiment.21.log', f'{subj}.csv', [subj])
 #	process_surveys('experiment.13.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})
