@@ -149,14 +149,15 @@ def rewrite_for_r():
 					'system'	: line['System'],
 					'task'		: line['Name'],
 					'accurate'	: int(line['Accuracy']),
-					'difficulty': int(line['Name'][0]),
+					'damage':	 int(line['Name'][0]),
 					'enrolled'	: currently[line['Subject']],
 					'semesters'	: semesters[line['Subject']],
+					'list'		: line['List'],
 				})
 	
 	# And output our finished datatable
 	with Path('data_for_r.csv').open('w', newline='') as f:
-		write = csv.DictWriter(f, ['subject', 'time', 'system', 'task', 'accurate', 'difficulty', 'enrolled', 'semesters'])
+		write = csv.DictWriter(f, ['subject', 'time', 'system', 'task', 'accurate', 'damage', 'enrolled', 'semesters', 'list'])
 		write.writeheader()
 		write.writerows(data)
 
@@ -165,8 +166,8 @@ def rewrite_for_r():
 # Subjects removed for IRB reasons: AY3, CY3, BX3
 if __name__ == '__main__':
 #	process_surveys('experiment.21.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1','AX2','AX3','AY1','AY2','BX1','BX2','BY1','BY2','BY3','CX1','CX2','CX3','CY1','CY2'})
-#	rewrite_for_r()
-	for subj in tqdm(['AX3', 'BY3', 'CX3'], disable=True):
-		print(subj)
-		process_results('experiment.21.log', f'{subj}.csv', [subj])
+	rewrite_for_r()
+#	for subj in tqdm(['AX3', 'BY3', 'CX3'], disable=True):
+#		print(subj)
+#		process_results('experiment.21.log', f'{subj}.csv', [subj])
 #	process_surveys('experiment.13.log', 'surveys.csv', {'PAE','PBE','PA1','PB1','PA2','PB2', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'})

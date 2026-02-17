@@ -1,9 +1,13 @@
 ---
-title: "Analysis"
-author: "Daniel Stelzer"
+title: "Kadaru Search System Analysis"
+author: "Daniel M. Stelzer"
 date: "`r Sys.Date()`"
 output: html_document
 ---
+
+Comments from T and A:
+- Error bars?
+- Number of outlier points removed per person and system
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -17,9 +21,11 @@ library(knitr)
 library(kableExtra)
 library(lme4)
 library(lmerTest)
+library(ggbeeswarm)
+library(viridis)
 ```
 
-Define some functions:
+Define some useful functions:
 
 ```{r}
 show <- function(.data) {
@@ -47,58 +53,92 @@ str(raw)
 
 "Subject" is the three-character subject code: AX1 indicates that they used experimental lists 1 and 2 ("A"; "B" uses 2 and 3, "C" uses 3 and 1), used the Zeichenlexikon last ("X"; "Y" means the Zeichenlexikon came first), and were the first subject for this combination of factors ("1").
 
-Exceptions: PA1 indicates that they were part of the pilot experiment which always put the Zeichenlexikon last ("P"), used lists 1 and 2 ("A"; "B" uses 2 and 1), and were the first subject for this combination of factors ("1"). "E" in a subject code stands for the experimenters themselves.
+Exceptions: PA1 indicates that they were part of the pilot experiment which always put the Zeichenlexikon last ("P"), used lists 1 and 2 ("A"; "B" uses 2 and 1), and were the first subject for this combination of factors ("1"). "E" indicates the first tests of the system; PBE is the experimenter themself.
 
 "Accurate" is whether or not their identification was correct, and "time" is how many seconds it took them to make that identification.
 
 "System" is "H" for Hantatallas (the code-based system), "S" for Sanhatallas (the drawing-based system), and "Z" for the Zeichenlexikon.
 
-"Task" is the sign they were trying to identify, and "difficulty" is the first character of that field: 0 means no damage at all, 1 some strokes are obscured but all are present, 2 missing strokes, 3 missing components, and 4 mostly obliterated.
+"Task" is the sign they were trying to identify, and "damage" is the first character of that field: 0 means no damage at all, 1 some strokes are obscured but all are present, 2 missing strokes, 3 missing components, and 4 mostly obliterated.
 
 "Enrolled" is 1 if currently enrolled in a Hittite class and 0 if not; "semesters" is how many semesters of Hittite classes they've taken, including the current one.
 
-Which list was used, and the order in which students tried the signs, is not included here. Modify `experiment_analyze.py` if you need those.
+"List" is which list was used (E1, E2, or E3: the practice lists S1 and S2 are filtered out in Python)
+
+The order in which students tried the signs is documented, but not included here. Modify `experiment_analyze.py` if you need it.
+
+## Factorize number of semesters
+
+At first, the "semesters" value was always either 0 or 1. But later rounds have brought in subjects with much, *much* more experience, so keeping this as a numeric variable will skew the results.
+
+```{r}
+subject_sems <- raw %>% group_by(subject,semesters) %>% summarize()
+subject_sems %>% show()
+```
+
+```{r}
+subject_sems %>% group_by(semesters) %>% summarize(count=n()) %>% show()
+```
+
+It looks like the most useful categories will be "0", "1", and "2+".
+
+```{r}
+cleaned_sems <- raw %>% mutate(experience = ifelse(semesters>=2.0, 2, round(semesters,0)))
+cleaned_sems$experience = as.factor(cleaned_sems$experience)
+levels(cleaned_sems$experience) = c("0", "1", "2+")
+cleaned_sems$enrolled = as.factor(cleaned_sems$enrolled)
+levels(cleaned_sems$enrolled) = c("no", "yes")
+cleaned_sems %>% group_by(subject,experience) %>% summarize() %>% show()
+```
 
 ## Remove outlier data points
 
 If someone took 10 seconds or less on a task, they probably knew it from memory, which isn't really testing their use of the system. Similarly, if they took 10 minutes or longer, they probably got distracted, which is similarly not testing their use of the system.
 
 ```{r}
-sane <- raw %>% filter(time > 10 & time < 600)
+sane <- cleaned_sems %>% filter(time > 10 & time < 600)
 str(sane)
 ```
 
 ## Remove outlier subjects
 
-If a subject has an overall accuracy of 50% or less on any particular system, that suggests they weren't paying much attention to the task. That means we should remove them.
+The original plan was to remove all subjects with an overall accuracy of 50% or less on any system, on the assumption they weren't paying attention. But running the analysis both ways, including them helps the standard error (more data is good!) and doesn't meaningfully change the results. So for now, we include them.
 
-We also need to remove subject PBE, who is the creator of Hantatallas and thus ended up with an accuracy of 100% on that system. We're interested in how *other* people use the system, not its creator who designed the experiment. For symmetry, we may also remove PAE (the other experimenter), once we have enough other data; however, he was not involved in the development of Hantatallas or the selection of tasks.
+We *do* need to remove subject PBE, who is the creator of Hantatallas and thus ended up with an accuracy of 100% on that system. We're interested in how *other* people use the system, not its creator who designed the experiment. For symmetry, we could also remove PAE (the other initial test of the apparatus), once we have enough other data; however, this person was not involved in the development of Hantatallas or the selection of tasks, so for now we leave them in.
 
 ```{r}
 raw_accs <- sane %>% group_by(subject, system) %>% summarize(accuracy=mean(accurate))
 raw_accs %>% show()
 ```
 
-Which of these is not greater than 50%?
+Which of these is not greater than 50%? (Or PBE.) Previously we used "accuracy >= 100.0" to exclude subject PBE here, but subject CX3 later achieved an accuracy of 100% with system S, so now we test for PBE explicitly.
 
 ```{r}
-accs_to_remove <- raw_accs %>% filter(accuracy <= 0.5 | accuracy >= 1.0)
+accs_to_remove <- raw_accs %>% filter(accuracy <= 0.5 | subject == 'PBE')
 show(accs_to_remove)
 ```
 
-So we're going to exclude AY1, BX1, PA2, and PBE.
+So previously, we would exclude AX3, AY1, BX1, PA2, and PBE.
 
 ```{r}
 removed_subjects <- unique(accs_to_remove$subject)
 removed_subjects
 ```
 
+Now, though, we don't actually remove them. Instead, we include all subjects except PBE.
+
+(Three subjects' data had to be removed for IRB reasons. Those are filtered out in the Python code and never make it into R in the first place.)
+
 ```{r}
-filtered <- sane %>% filter(subject %notin% removed_subjects)
+#filtered <- sane %>% filter(subject %notin% removed_subjects)
+filtered <- sane %>% filter(subject != "PBE")
+tmp_accs <- raw_accs %>% filter(subject != "PBE")
 str(filtered)
 ```
 
 ## Divide subjects into Z-H and Z-S categories
+
+All subjects used the Zeichenlexikon (Z) and either Hantatallas (H) or Sanhatallas (S). For various parts of the upcoming analysis, we want to handle the Z-H subjects separately from the Z-S subjects, so that we can investigate each system individually.
 
 ```{r}
 tmp_used_h <- filtered %>% filter(system=="H")
@@ -114,29 +154,32 @@ subjs_used_s
 
 ## Analyze accuracy
 
-Let's get an overview of the overall accuracy, including outlier subjects.
+Let's get an overview of the overall accuracy.
 
 ```{r}
-set.seed(1)
+#set.seed(1)
 
-ggplot(data=raw_accs) +
+ggplot(data=tmp_accs) +
     aes(x=accuracy, y=system, color=system, shape=system) +
-    geom_jitter(width=0.01, height=0.25) +
-    labs(title='Raw accuracy, including outlier subjects', x='Accuracy', y='System', shape=NULL, color=NULL)
+#    geom_jitter(width=0.01, height=0.25) +
+    geom_quasirandom(orientation='y', width=0.25, size=3) +
+    scale_color_viridis(discrete=TRUE) +
+    theme_bw() +
+    labs(title='Accuracy by system', x='Accuracy', y='System', shape=NULL, color=NULL)
 ```
 
 ```{r}
-ggsave('r_raw_accuracy.pdf', width=6, height=4, units="in")
+ggsave('r_overall_accuracy.pdf', width=6, height=4, units="in")
 ```
 
-For everything else, we're going to use the `filtered` dataset that excludes the outlier subjects. Including "enrolled" and "semesters" in the grouping, since they don't vary by subject or system, ensures that they end up in the summary afterward.
+For everything else, we're going to use the `filtered` dataset that excludes the outlier subjects. Including "enrolled" and "experience" in the grouping, since they don't vary by subject or system, ensures that they end up in the summary afterward.
 
 ```{r}
-accuracy <- filtered %>% group_by(subject, system, enrolled, semesters) %>% summarize(accuracy = mean(accurate))
+accuracy <- filtered %>% group_by(subject, system, enrolled, experience) %>% summarize(accuracy = mean(accurate))
 show(accuracy)
 ```
 
-Now we have our subject variable, one within-subjects variable (system), two between-subjects variables (enrolled and semesters), and our output variable (accuracy). But is an ANOVA really the right thing to use here?
+Now we have our subject variable, one within-subjects variable (system), two between-subjects variables (enrolled and experience), and our output variable (accuracy). But is an ANOVA really the right thing to use here?
 
 ```{r}
 accs_h <- accuracy %>% filter(subject %in% subjs_used_h)
@@ -145,30 +188,36 @@ accs_s <- accuracy %>% filter(subject %in% subjs_used_s)
 
 ```{r}
 ggplot(data=pivot_wider(accs_h, names_from=system, values_from=accuracy)) +
-    geom_point(mapping=aes(x=Z, y=H, colour=as.factor(semesters), shape=as.factor(enrolled))) +
-    geom_abline(slope=1, intercept=0)
+    geom_abline(slope=1, intercept=0) +
+    geom_point(mapping=aes(x=Z, y=H, colour=experience, shape=enrolled), size=4) +
+    xlim(0.3, 1.0) + ylim(0.3, 1.0) + theme_bw() +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(x="Accuracy with Zeichenlexikon", y="Accuracy with Hantatallas", shape="Currently enrolled?", colour="Experience (sems)")
 ```
 
 ```{r}
 ggplot(data=pivot_wider(accs_s, names_from=system, values_from=accuracy)) +
-    geom_point(mapping=aes(x=Z, y=S, colour=as.factor(semesters), shape=as.factor(enrolled))) +
-    geom_abline(slope=1, intercept=0)
+    geom_abline(slope=1, intercept=0) +
+    geom_point(mapping=aes(x=Z, y=S, colour=experience, shape=enrolled), size=4) +
+    xlim(0.3, 1.0) + ylim(0.3, 1.0) + theme_bw() +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(x="Accuracy with Zeichenlexikon", y="Accuracy with Hantatallas", shape="Currently enrolled?", colour="Experience (sems)")
 ```
 
 ```{r}
 set.seed(2)
 
 ggplot() +
-    geom_jitter(data=pivot_wider(accs_h, names_from=system, values_from=accuracy),
-               mapping=aes(x=Z, y=H, shape='Hantatallas', color='Hantatallas'),
-               width=0.005, height=0.005) +
-    geom_jitter(data=pivot_wider(accs_s, names_from=system, values_from=accuracy),
-               mapping=aes(x=Z, y=S, shape='Sanhatallas', color='Sanhatallas'),
-               width=0.005, height=0.005) +
     geom_abline(slope=1, intercept=0) +
-    xlim(0.5, 1.0) +
-    ylim(0.5, 1.0) +
-    labs(shape='System', color='System', x='Zeichenlexikon', y='Other system', title='Accuracy by subject and system')
+    geom_quasirandom(data=pivot_wider(accs_h, names_from=system, values_from=accuracy),
+               mapping=aes(x=Z, y=H, shape='Hantatallas', color='Hantatallas'),
+               width=0.05, size=3) +
+    geom_quasirandom(data=pivot_wider(accs_s, names_from=system, values_from=accuracy),
+               mapping=aes(x=Z, y=S, shape='Sanhatallas', color='Sanhatallas'),
+               width=0.05, size=3) +
+    xlim(0.3, 1.0) + ylim(0.3, 1.0) + theme_bw() +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(shape='Other system', color='Other system', x='Zeichenlexikon', y='Other system', title='Accuracy by subject and system')
 ```
 
 ```{r}
@@ -191,13 +240,13 @@ ggplot(data=accs_h_wide, mapping=aes(sample=diff)) +
   stat_qq_band(alpha = 0.5, conf = 0.95, bandType = "pointwise", fill = "blue") +
   stat_qq_line(identity = TRUE) +
   stat_qq_point(col = "black") +
-  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Hantatallas") + 
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Hantatallas vs Zeichenlexikon") + 
   theme_bw()
 ggplot(data=accs_s_wide, mapping=aes(sample=diff)) +
   stat_qq_band(alpha = 0.5, conf = 0.95, bandType = "pointwise", fill = "green") +
   stat_qq_line(identity = TRUE) +
   stat_qq_point(col = "black") +
-  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Sanhatallas") + 
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Sanhatallas vs Zeichenlexikon") + 
   theme_bw()
 ```
 
@@ -210,8 +259,6 @@ shapiro.test(accs_h_wide$diff)
 shapiro.test(accs_s_wide$diff)
 ```
 
-The takeaway here, I think, is that we need more data on Sanhatallas. Six data points is just too few. But we should have more of those soon!
-
 Now, do the test!
 
 ```{r}
@@ -222,7 +269,11 @@ t.test(x=accs_h_wide$H, y=accs_h_wide$Z, paired=TRUE)
 t.test(x=accs_s_wide$S, y=accs_s_wide$Z, paired=TRUE)
 ```
 
-We could also try a Wilcox test here (replace t.test with wilcox.test) if our assumptions of normality were violated.
+We could also try a Wilcox test here (replace t.test with wilcox.test), which doesn't require the assumption of normality.
+
+```{r}
+wilcox.test(x=accs_h_wide$H, y=accs_h_wide$Z, paired=TRUE)
+```
 
 ```{r}
 wilcox.test(x=accs_s_wide$S, y=accs_s_wide$Z, paired=TRUE)
@@ -231,7 +282,14 @@ wilcox.test(x=accs_s_wide$S, y=accs_s_wide$Z, paired=TRUE)
 To get more details, we can use a generalized linear mixed model (GLMM). This basically does the same thing as the above, but uses _all_ the data points instead of just the average of them.
 
 ```{r}
-glmm <- glmer(accurate ~ relevel(system, ref="Z") + (1|subject) + (1|task), data=filtered, family=binomial(link="logit"))
+glmm <- glmer(accurate ~ relevel(system, ref="Z") + (1|task) + (1|experience) + (1|subject), data=filtered, family=binomial(link="logit"))
+summary(glmm)
+```
+
+It looks like `experience` is not useful in this model. Let's re-run it, removing that.
+
+```{r}
+glmm <- glmer(accurate ~ relevel(system, ref="Z") + (1|task) + (1|subject), data=filtered, family=binomial(link="logit"))
 summary(glmm)
 ```
 
@@ -239,7 +297,7 @@ summary(glmm)
 
 For time, we have several different data points per system per subject, and we don't want to entirely collapse those down into a single mean. So instead of a simple t-test (or ANOVA), we do a mixed-effects linear model. (And we use lmerTest to get a p-value, even though the author of lme4 dislikes that, just because publishers are going to want one. Alas.)
 
-The dataset we're using here is the `filtered` one, with outliers removed.
+The dataset we're using here is the `filtered` one, with outlier data points removed.
 
 ```{r}
 str(filtered)
@@ -268,10 +326,10 @@ summary(mixed)
 
 We see less significance here because we threw out a bunch of data, so the standard error increased. But the overall results are not substantially different.
 
-Let's make a visualization to sanity-check these results, showing the difference in mean time by system by student.
+Let's make a visualization to sanity-check these results, showing the difference in mean time by system by subject.
 
 ```{r}
-mean_times <- filtered %>% group_by(subject, system) %>% summarize(mean=mean(time), accuracy=mean(accurate))
+mean_times <- filtered %>% group_by(subject, system, experience) %>% summarize(mean=mean(time), accuracy=mean(accurate))
 head(mean_times)
 ```
 
@@ -285,13 +343,13 @@ show(mean_diff_s)
 ```{r}
 set.seed(1)
 ggplot() +
-    geom_jitter(data=mean_diff_h,
-               mapping=aes(x=diff, y='Hantatallas', shape='Hantatallas', color='Hantatallas'),
-               width=0, height=0.2) +
-    geom_jitter(data=mean_diff_s,
-               mapping=aes(x=diff, y='Sanhatallas', shape='Sanhatallas', color='Sanhatallas'),
-               width=0, height=0.2) +
-    labs(x="Time", y="System", title="Difference of mean times", shape=NULL, color=NULL)
+    geom_quasirandom(data=mean_diff_h, orientation='y', size=3,
+               mapping=aes(x=diff, y='Hantatallas', shape='Hantatallas', color='Hantatallas')) +
+    geom_quasirandom(data=mean_diff_s, orientation='y', size=3,
+               mapping=aes(x=diff, y='Sanhatallas', shape='Sanhatallas', color='Sanhatallas')) +
+    theme_bw() +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(x="Time improvement (seconds)", y="System", title="Difference of mean times", shape=NULL, color=NULL)
 ```
 
 ```{r}
@@ -302,14 +360,15 @@ ggsave("r_mean_time_diff.pdf", width=6, height=4, units="in")
 set.seed(1)
 
 ggplot() +
-    geom_point(data=mean_diff_h,
-               mapping=aes(x=mean_Z, y=mean_H, shape='Hantatallas', color='Hantatallas')) +
-    geom_point(data=mean_diff_s,
-               mapping=aes(x=mean_Z, y=mean_S, shape='Sanhatallas', color='Sanhatallas')) +
     geom_abline(slope=1, intercept=0) +
-    xlim(60, 215) +
-    ylim(60, 215) +
-    labs(x="Zeichenlexikon", y="Other system", title="Mean time per task", shape=NULL, color=NULL)
+    geom_point(data=mean_diff_h, size=3,
+               mapping=aes(x=mean_Z, y=mean_H, shape='Hantatallas', color='Hantatallas')) +
+    geom_point(data=mean_diff_s, size=3,
+               mapping=aes(x=mean_Z, y=mean_S, shape='Sanhatallas', color='Sanhatallas')) +
+    xlim(60, 215) + ylim(60, 215) +
+    theme_bw() +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(x="Zeichenlexikon", y="Other system", title="Mean time per task (seconds)", shape=NULL, color=NULL)
 ```
 
 ```{r}
@@ -326,14 +385,16 @@ show(ratios_s)
 ```
 
 ```{r}
-set.seed(1)
-
 ggplot() +
-    geom_point(data=ratios_h,
+    geom_hline(yintercept=1) + geom_vline(xintercept=1) +
+    geom_point(data=ratios_h, size=3,
                mapping=aes(x=time_ratio, y=acc_ratio, shape='Hantatallas', color='Hantatallas')) +
-    geom_point(data=ratios_s,
+    geom_point(data=ratios_s, size=3,
                mapping=aes(x=time_ratio, y=acc_ratio, shape='Sanhatallas', color='Sanhatallas')) +
-    labs(x="Time ratio", y="Accuracy ratio")
+    theme_bw() +
+    xlim(0.4, 1.1) + ylim(0.7, 1.4) +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(x="Time ratio (other/Z)", y="Accuracy ratio (other/Z)", shape='System', color='System')
 ```
 
 This plot is mostly useful to give us a sense of who the outliers are. The blue triangle at the bottom left is someone who spent basically no time using Sanhatallas, and had a correspondingly low accuracy; the red dots at the top right spent a lot of time using Hantatallas, but got a very high accuracy for their efforts.
@@ -353,20 +414,19 @@ eff_s <- mean_diff_s %>% mutate(efficiency_S = accuracy_S / mean_S,
 show(eff_s)
 ```
 
-"Efficiency" is defined as mean accuracy over mean time, to compensate for the outliers in the above plot. Let's see how it stacks up!
+"Efficiency" is defined as mean accuracy over mean time, to compensate for the outliers in the above plot. In other words, it's meant to measure how effectively people used the time they spent. Let's see how it stacks up!
 
 ```{r}
-set.seed(1)
-
 ggplot() +
-    geom_point(data=eff_h,
-               mapping=aes(x=efficiency_Z, y=efficiency_H, shape='Hantatallas', color='Hantatallas')) +
-    geom_point(data=eff_s,
-               mapping=aes(x=efficiency_Z, y=efficiency_S, shape='Sanhatallas', color='Sanhatallas')) +
     geom_abline(slope=1, intercept=0) +
-    labs(x="Zeichenlexikon", y="Other system", title="Efficiency (mean accuracy / mean time)", shape=NULL, color=NULL) +
-    xlim(0.003, 0.014) +
-    ylim(0.003, 0.014)
+    geom_point(data=eff_h, size=3,
+               mapping=aes(x=efficiency_Z, y=efficiency_H, shape='Hantatallas', color='Hantatallas')) +
+    geom_point(data=eff_s, size=3,
+               mapping=aes(x=efficiency_Z, y=efficiency_S, shape='Sanhatallas', color='Sanhatallas')) +
+    theme_bw() +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+#    xlim(0.002, 0.016) + ylim(0.002, 0.016)
+    labs(x="Zeichenlexikon", y="Other system", title="Efficiency (mean accuracy / mean time)", shape='Other system', color='Other system')
 ```
 
 ```{r}
@@ -381,4 +441,67 @@ t.test(x=eff_s$efficiency_S, y=eff_s$efficiency_Z, paired=TRUE)
 wilcox.test(x=eff_s$efficiency_S, y=eff_s$efficiency_Z, paired=TRUE)
 ```
 
-This suggests that the efficiency measure eliminates the outliers who caused a problem before, but we still need more data for a t-test to be properly meaningful.
+This suggests that the efficiency measure has significantly reduced outliers in the data set.
+
+# Task difficulty
+
+It's also worth asking if some tasks are more difficult than others.
+
+```{r}
+tasks <- filtered %>% group_by(task) %>% summarize(accuracy=mean(accurate), time=mean(time))
+tasks %>% show()
+```
+
+```{r}
+# Look only at E-lists (main experiment), but with the mean across all tests, including pilot trials
+tmp <- filtered %>% filter(list=="E1" | list=="E2" | list=="E3")
+# The join looks up the entries in `tasks` that match the `task` in `tmp`
+tasklists <- inner_join(tasks, tmp, by=c("task")) %>% group_by(task, damage, list, accuracy, time.x) %>% summarize(.groups="drop") %>% rename(time=time.x) %>% arrange(list, damage, task) %>% mutate(task.sorted=factor(task, levels=task))
+tasklists %>% show()
+```
+
+Now, are some of the lists more difficult than others?
+
+```{r}
+ggplot(tasklists, aes(x=task.sorted, y=accuracy, fill=list, colour=damage)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    scale_color_viridis(option="mako", begin=0, end=0.9) +
+    scale_fill_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    theme(axis.text.x = element_text(angle = -90, vjust = 0.5, hjust=0, size=6)) +
+    labs(title="Accuracy on individual stimuli", x="Stimulus", y="Accuracy", fill="List", color="Damage")
+```
+
+```{r}
+ggsave("r_stimuli1.pdf", width=6, height=4, units="in")
+```
+
+```{r}
+ggplot(tasklists, aes(x=accuracy, y=list, color=list, fill=list, shape=as.factor(damage))) +
+    geom_quasirandom(size=3, orientation='y') +
+    theme_bw() +
+    scale_shape_manual(values=c(21,22,23,24,25)) +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    scale_fill_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(title="Accuracy on individual stimuli", x="Accuracy", y="List", shape="Damage", color='List', fill='List')
+```
+
+```{r}
+ggsave("r_stimuli2.pdf", width=6, height=4, units="in")
+```
+
+```{r}
+ggplot(tasklists, aes(x=accuracy, y=as.factor(damage), color=list, fill=list, shape=as.factor(damage))) +
+    geom_quasirandom(size=3, orientation='y') +
+    theme_bw() +
+    scale_shape_manual(values=c(21,22,23,24,25)) +
+    scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    scale_fill_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
+    labs(title='Accuracy on individual stimuli', x="Accuracy", y="Damage", color='List', fill='List', shape='Damage')
+```
+
+```{r}
+ggsave("r_stimuli3.pdf", width=6, height=4, units="in")
+```
+
+skjeh

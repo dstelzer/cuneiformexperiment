@@ -7,11 +7,11 @@ from tqdm import tqdm, trange
 
 from violin import violin
 
-ALL = {'PAE', 'PBE', 'PA1', 'PB1', 'AX1', 'AY1', 'BX1', 'BY1', 'CY1'}
+ALL = {'PAE', 'PBE', 'PA1', 'PA2', 'PB1', 'PB2', 'AX1', 'AX2', 'AX3', 'AY1', 'AY2', 'BX1', 'BX2', 'BY1', 'BY2', 'BY3', 'CX1', 'CX2', 'CX3', 'CY1', 'CY2'}
 OMIT = {'PBE', # Creator of Hantatallas, too high accuracy
-		'PA2', # Accuracy of 0.5 on Hantatallas
-		'AY1', # Accuracy of 0.4 on H and 0.3 on Z
-		'BX1', # Accuracy of 0.4 on Z
+	#	'PA2', # Accuracy of 0.5 on Hantatallas
+	#	'AY1', # Accuracy of 0.4 on H and 0.3 on Z
+	#	'BX1', # Accuracy of 0.4 on Z
 		}
 
 def get_data(subjects):
@@ -515,37 +515,58 @@ def likert(start=0, end=None, title=None, reverse=False):
 #	colors = ['red', 'orange', 'yellow', 'green', 'cyan']
 #	colors = [plt.cm.coolwarm(i) for i in (0.9, 0.8, 0.5, 0.2, 0.1)]
 #	colors[2] = '#aaaaaa'
-	colors = ['#FF8000', '#FFBF80', '#E0E0E0', '#80BFFF', '#0080FF']
+#	colors = ['#FF8000', '#FFBF80', '#E0E0E0', '#80BFFF', '#0080FF']
+	
+	# https://emilhvitfeldt.github.io/r-color-palettes/discrete/NatParksPalettes/Acadia/
+	# With extra pure-black entries for 0 and 6
+	colors = ['#000000', '#212E52', '#8087AA', '#F9ECE8', '#FEB424', '#D8511D', '#000000']
 	
 	for col in columns:
 		data[col] = data[col].astype('Int64') # Allow NaNs
-		data[col][data[col] > 5] = 5 # Handle the people who put 6
-		data[col][data[col] < 1] = 1 # Or 0
+		data[col][data[col] > 5] = 6 # Handle the people who put 6
+		data[col][data[col] < 1] = 0 # Or 0
 		if reverse:
 			data[col] = 6 - data[col]
 	
 	def howmany(col, val): # Return as a proportion to deal with different numbers of subjects on each system
-		return len(data[data[col]==val]) / data.count()[col]
+		return len(data[data[col]==val]) / data.count()[col] * 100
 	
 	left = np.zeros(len(columns[start:end]))
 #	ys = list(range(len(columns), 0, -1)) # n..0
 	if end and end-start > 3:
-		ys = list(reversed(['Codes\nDifficult', 'Drawing\nDifficult', 'Dictionary\nDifficult', 'Codes\nTiring', 'Drawing\nTiring', 'Dictionary\nTiring', 'Codes\nCertain', 'Drawing\nCertain', 'Dictionary\nCertain']))[start:end]
+		ys = list(reversed(['Hantatallas\nDifficult', 'Sanhatallas\nDifficult', 'Zeichenlexikon\nDifficult', 'Hantatallas\nTiring', 'Sanhatallas\nTiring', 'Zeichenlexikon\nTiring', 'Hantatallas\nCertain', 'Sanhatallas\nCertain', 'Zeichenlexikon\nCertain']))[start:end]
 	else:
 		ys = list(reversed(['Hantatallas', 'Sanhatallas', 'Zeichenlexikon']))
-	for i in range(5):
-		vals = [howmany(col, i+1) for col in columns[start:end]]
-		plt.barh(ys, width=vals, left=left, color=colors[i])
+	#	ys = list(reversed(['H', 'S', 'Z']))
+	handles = []
+	for i in range(7): # Including 0 and 6, currently
+		vals = [howmany(col, i) for col in columns[start:end]]
+		hand = plt.barh(ys, width=vals, left=left, color=colors[i])
 		left += vals
+		if 0 < i < 6: handles.append(hand)
+	
+	# Default size: [6.4, 4.8]
+	if end and end-start <= 3:
+		smaller = True
+		plt.gcf().set_size_inches([6.4, 4])
+	else:
+		smaller = False
+	plt.gcf().set_dpi(300)
 	
 	if title: plt.title(title, y=1.0, pad=30, x=-0.30, loc='left', fontsize=16)
 	leg = ['Not at all', 'A bit', 'Somewhat', 'Very', 'Extremely']
 	if reverse: leg = list(reversed(leg))
-	plt.legend(leg, ncol=5, bbox_to_anchor=(1.015,1.1))
+	plt.legend(handles, leg, ncol=5, bbox_to_anchor=(1.015, 1.14 if smaller else 1.1))
 	plt.subplots_adjust(left=0.25, right=0.95)
-	if title: plt.subplots_adjust(top=0.85)
-	plt.xticks(np.linspace(0, 1, 11))
+	if title or smaller:
+		if title and smaller:
+			plt.subplots_adjust(top=0.8)
+		else:
+			plt.subplots_adjust(top=0.85)
+	plt.xticks(np.linspace(0, 100, 11))
+	if smaller: plt.yticks(fontsize=12)
 	plt.savefig(f'likert_{start}{end}.pdf')
+	plt.savefig(f'likert_{start}{end}.png')
 	plt.show()
 
 if __name__ == '__main__':
