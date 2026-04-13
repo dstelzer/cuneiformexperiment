@@ -548,15 +548,15 @@ def likert(start=0, end=None, title=None, reverse=False):
 	# Default size: [6.4, 4.8]
 	if end and end-start <= 3:
 		smaller = True
-		plt.gcf().set_size_inches([6.4, 4])
+		plt.gcf().set_size_inches([6.4, 3])
 	else:
 		smaller = False
 	plt.gcf().set_dpi(300)
 	
-	if title: plt.title(title, y=1.0, pad=30, x=-0.30, loc='left', fontsize=16)
+	if title: plt.title(title, y=0.98 if smaller else 1.0, pad=30, x=-0.30, loc='left', fontsize=14 if smaller else 16)
 	leg = ['Not at all', 'A bit', 'Somewhat', 'Very', 'Extremely']
 	if reverse: leg = list(reversed(leg))
-	plt.legend(handles, leg, ncol=5, bbox_to_anchor=(1.015, 1.14 if smaller else 1.1))
+	plt.legend(handles, leg, ncol=5, bbox_to_anchor=(1.015, 1.175 if smaller else 1.1))
 	plt.subplots_adjust(left=0.25, right=0.95)
 	if title or smaller:
 		if title and smaller:
