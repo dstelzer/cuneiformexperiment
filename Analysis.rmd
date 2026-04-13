@@ -177,7 +177,7 @@ tmp_accs_2 <- tmp_accs %>% mutate(sysadjust=ifelse(system=='H',0,ifelse(system==
 ggplot(data=tmp_accs_2) +
     aes(x=accuracy, y=system, color=as.factor(sysadjust), shape=system, fill=as.factor(sysadjust)) +
 #    geom_jitter(width=0.01, height=0.25) +
-    geom_quasirandom(orientation='y', width=0.25, size=3) +
+    geom_quasirandom(orientation='y', groupOnX=FALSE, width=0.25, size=3) +
     scale_shape_manual(values=c(21,24,23)) +
     scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
     scale_fill_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
@@ -236,10 +236,10 @@ set.seed(2)
 
 ggplot() +
     geom_abline(slope=1, intercept=0) +
-    geom_quasirandom(data=pivot_wider(accs_h, names_from=system, values_from=accuracy),
+    geom_quasirandom(groupOnX=TRUE, data=pivot_wider(accs_h, names_from=system, values_from=accuracy),
                mapping=aes(x=Z, y=H, shape='Hantatallas', color='Hantatallas'),
                width=0.05, size=3) +
-    geom_quasirandom(data=pivot_wider(accs_s, names_from=system, values_from=accuracy),
+    geom_quasirandom(groupOnX=TRUE, data=pivot_wider(accs_s, names_from=system, values_from=accuracy),
                mapping=aes(x=Z, y=S, shape='Sanhatallas', color='Sanhatallas'),
                width=0.05, size=3) +
     xlim(0.3, 1.0) + ylim(0.3, 1.0) + theme_bw() +
@@ -262,19 +262,29 @@ head(accs_h_wide)
 My favorite way to do this is with a Q-Q plot, because it means we can look at nice plots and eyeball it instead of just staring at a column of numbers.
 
 ```{r}
-library(qqplotr)
+is_qqplotr_available <- require(qqplotr)
+if(is_qqplotr_available) {
 ggplot(data=accs_h_wide, mapping=aes(sample=diff)) +
   stat_qq_band(alpha = 0.5, conf = 0.95, bandType = "pointwise", fill = "blue") +
   stat_qq_line(identity = TRUE) +
   stat_qq_point(col = "black") +
   labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Hantatallas vs Zeichenlexikon") + 
   theme_bw()
+} else {
+  print("QQPlotR not available :( install it for pretty pictures!")
+}
+```
+```{r}
+if(is_qqplotr_available) {
 ggplot(data=accs_s_wide, mapping=aes(sample=diff)) +
   stat_qq_band(alpha = 0.5, conf = 0.95, bandType = "pointwise", fill = "green") +
   stat_qq_line(identity = TRUE) +
   stat_qq_point(col = "black") +
   labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title="Sanhatallas vs Zeichenlexikon") + 
   theme_bw()
+} else {
+  print("QQPlotR not available :( install it for pretty pictures!")
+}
 ```
 
 But we can also do a Shapiro-Wilk test for numerical confidence.
@@ -362,17 +372,19 @@ head(mean_times)
 
 ```{r}
 mean_diff_h = mean_times %>% filter(subject %in% subjs_used_h) %>% pivot_wider(names_from=system, values_from=c(mean, accuracy)) %>% mutate(diff = mean_Z - mean_H)
-mean_diff_s = mean_times %>% filter(subject %in% subjs_used_s) %>% pivot_wider(names_from=system, values_from=c(mean, accuracy)) %>% mutate(diff = mean_Z - mean_S)
 show(mean_diff_h)
+```
+```{r}
+mean_diff_s = mean_times %>% filter(subject %in% subjs_used_s) %>% pivot_wider(names_from=system, values_from=c(mean, accuracy)) %>% mutate(diff = mean_Z - mean_S)
 show(mean_diff_s)
 ```
 
 ```{r}
 set.seed(1)
 ggplot() +
-    geom_quasirandom(data=mean_diff_h, orientation='y', size=3,
+    geom_quasirandom(data=mean_diff_h, orientation='y', groupOnX=FALSE, size=3,
                mapping=aes(x=diff, y='Hantatallas', shape='Hantatallas', color='Hantatallas')) +
-    geom_quasirandom(data=mean_diff_s, orientation='y', size=3,
+    geom_quasirandom(data=mean_diff_s, orientation='y', groupOnX=FALSE, size=3,
                mapping=aes(x=diff, y='Sanhatallas', shape='Sanhatallas', color='Sanhatallas')) +
     theme_bw() +
     geom_vline(xintercept=0) +
@@ -442,6 +454,8 @@ eff_h <- mean_diff_h %>% mutate(efficiency_H = accuracy_H / mean_H * 60,
                                 efficiency_Z = accuracy_Z / mean_Z * 60) %>%
                         mutate(eff_diff = efficiency_H - efficiency_Z)
 show(eff_h)
+```
+```{r}
 eff_s <- mean_diff_s %>% mutate(efficiency_S = accuracy_S / mean_S * 60,
                                 efficiency_Z = accuracy_Z / mean_Z * 60) %>%
                         mutate(eff_diff = efficiency_S - efficiency_Z)
@@ -513,7 +527,7 @@ ggsave("r_stimuli1.pdf", width=6, height=4, units="in")
 
 ```{r}
 ggplot(tasklists, aes(x=accuracy, y=list, color=list, shape=as.factor(damage))) +
-    geom_quasirandom(size=3, orientation='y', stroke=2) +
+    geom_quasirandom(size=3, orientation='y', groupOnX=FALSE, stroke=2) +
     theme_bw() +
 #    scale_shape_manual(values=c(21,22,23,24,25)) +
     scale_shape_manual(values=c(48, 49, 50, 51, 52)) +
@@ -530,7 +544,7 @@ ggsave("r_stimuli2.pdf", width=6, height=4, units="in")
 
 ```{r}
 ggplot(tasklists, aes(x=accuracy, y=as.factor(damage), color=list, fill=list, shape=list)) +
-    geom_quasirandom(size=3, orientation='y') +
+    geom_quasirandom(size=3, orientation='y', groupOnX=FALSE) +
     theme_bw() +
     scale_shape_manual(values=c(23,22,21)) +
 #    scale_shape_manual(values=c(48, 49, 50, 51, 52)) +
@@ -547,7 +561,7 @@ What about the time taken?
 
 ```{r}
 ggplot(tasklists, aes(x=time, y=accuracy, color=list, shape=as.factor(damage))) +
-    geom_quasirandom(size=3, stroke=3) +
+    geom_quasirandom(groupOnX=TRUE, size=3, stroke=3) +
     theme_bw() +
     scale_shape_manual(values=c(48, 49, 50, 51, 52)) +
     scale_color_viridis(discrete=TRUE, option="plasma", begin=0, end=0.85) +
@@ -570,7 +584,7 @@ Let's plot that correlation and see.
 ```{r}
 ggplot(tasklists, aes(x=time, y=accuracy)) +
     geom_smooth(formula=y~x, method="lm", color="gold", se=FALSE) +
-    geom_quasirandom(size=2) +
+    geom_quasirandom(groupOnX=TRUE, size=2) +
     theme_bw() +
     xlim(55, 295) + # Don't cut off the rightmost label
 #    geom_smooth(formula=y~x, method="loess", color="red", se=FALSE) +
@@ -617,7 +631,7 @@ And plot it, too!
 ```{r}
 ggplot(tasklists_clean, aes(x=time, y=accuracy)) +
     geom_smooth(formula=y~x, method="lm", color="gold", se=FALSE) +
-    geom_quasirandom(size=2) +
+    geom_quasirandom(groupOnX=TRUE, size=2) +
     theme_bw() +
 #    geom_smooth(formula=y~x, method="loess", color="red", se=FALSE) +
     labs(title='Correlation between time and accuracy by stimulus, without outliers', x='Average time (sec)', y='Accuracy')
@@ -659,8 +673,14 @@ eff %>% show()
 ```{r}
 subjdata_full = full_join(subjdata, eff, by=c("subject")) %>% ungroup()
 subjdata_full %>% select(subject, semesters, experience, enrolled, list_H, list_S, list_Z) %>% show()
+```
+```{r}
 subjdata_full %>% select(subject, acc_mean_H, acc_mean_S, acc_mean_Z, acc_std_H, acc_std_S, acc_std_Z) %>% show()
+```
+```{r}
 subjdata_full %>% select(subject, time_mean_H, time_mean_S, time_mean_Z, time_std_H, time_std_S, time_std_Z) %>% show()
+```
+```{r}
 subjdata_full %>% select(subject, efficiency_H, efficiency_S, efficiency_Z) %>% show() # Could add more to this one
 ```
 
